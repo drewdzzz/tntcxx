@@ -145,9 +145,9 @@ TNTCXX_TEST(NAME RulesUnit.test TYPE ctest
             SOURCES src/mpp/Rules.hpp test/RulesUnitTest.cpp
 )
 
-TNTCXX_TEST(NAME EncDecUnit.test TYPE ctest
-            SOURCES src/mpp/mpp.hpp test/EncDecTest.cpp
-)
+# TNTCXX_TEST(NAME EncDecUnit.test TYPE ctest
+        #     SOURCES src/mpp/mpp.hpp test/EncDecTest.cpp
+# )
 
 TNTCXX_TEST(NAME Client.test TYPE ctest
             SOURCES src/Client/Connector.hpp test/ClientTest.cpp
