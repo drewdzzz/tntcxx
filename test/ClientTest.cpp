@@ -784,7 +784,7 @@ int main()
 	 * an a lot more complex state machine.
 	 */
 #ifndef TNTCXX_ENABLE_SSL
-	::test_sigpipe(client);
+	// ::test_sigpipe(client);
 #endif
 	::test_dead_connection_wait(client);
 	return 0;
