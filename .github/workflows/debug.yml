@@ -1,0 +1,65 @@
+name: debug
+
+on:
+  # Triggers the workflow on push to master or pull request
+  push:
+    branches: [ "master" ]
+  pull_request:
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  ubuntu_20_04:
+    runs-on: ubuntu-20.04
+
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+
+      # Builds tntcxx without SSL.
+      # Testing is enabled except for client tests since they require tarantool.
+      - name: build
+        run: |
+          mkdir build
+          cd build
+          cmake -DCMAKE_BUILD_TYPE=Debug -DTNTCXX_BUILD_TESTING=ON -DTNTCXX_ENABLE_SSL=OFF .. 
+          make -j
+      - name: test
+        run: ctest --output-on-failure -E "Client"
+
+  ubuntu_22_04:
+    runs-on: ubuntu-22.04
+
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+
+      # Builds tntcxx without SSL.
+      # Testing is enabled except for client tests since they require tarantool.
+      - name: build
+        run: |
+          mkdir build
+          cd build
+          cmake -DCMAKE_BUILD_TYPE=Debug -DTNTCXX_BUILD_TESTING=ON -DTNTCXX_ENABLE_SSL=OFF .. 
+          make -j
+      - name: test
+        run: ctest --output-on-failure -E "Client"
+
+  macos_latest:
+    runs-on: macos-latest
+
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+
+      # Builds tntcxx without SSL.
+      # Testing is enabled except for client tests since they require tarantool.
+      - name: build
+        run: |
+          mkdir build
+          cd build
+          cmake -DCMAKE_BUILD_TYPE=Debug -DTNTCXX_BUILD_TESTING=ON -DTNTCXX_ENABLE_SSL=OFF .. 
+          make -j
+      - name: test
+        run: ctest --output-on-failure -E "Client"
