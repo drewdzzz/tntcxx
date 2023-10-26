@@ -879,10 +879,22 @@ single_conn_sql(Connector<BUFFER, NetProvider> &client)
 	fail_unless(response->body.data->sql_data->sql_info != std::nullopt);
 	fail_if(response->body.error_stack != std::nullopt);
 
+	TEST_CASE("ENABLE METADATA");
+	stmt_str = "UPDATE \"_session_settings\" SET \"value\" = true WHERE \"name\" = 'sql_full_metadata';";
+	stmt = StmtProcessor::process(client, conn, stmt_str);
+	rid_t enable_metadata = conn.execute(stmt, std::make_tuple());
+	
+	client.wait(conn, enable_metadata, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(enable_metadata));
+	response = conn.getResponse(enable_metadata);
+	fail_unless(response != std::nullopt);
+	fail_unless(response->body.data->sql_data->sql_info != std::nullopt);
+	fail_if(response->body.error_stack != std::nullopt);
+
 	TEST_CASE("CREATE TABLE with autoincrement");
 	stmt_str = "CREATE TABLE IF NOT EXISTS tsql "
 		   "(column1 UNSIGNED PRIMARY KEY AUTOINCREMENT, "
-		   "column2 VARCHAR(50), column3 DOUBLE);";
+		   "column2 STRING, column3 DOUBLE);";
 	stmt = StmtProcessor::process(client, conn, stmt_str);
 	create_table = conn.execute(stmt, std::make_tuple());
 	client.wait(conn, create_table, WAIT_TIMEOUT);
@@ -933,6 +945,23 @@ single_conn_sql(Connector<BUFFER, NetProvider> &client)
 	sql_data_select_autoinc.metadata = Metadata{3, sql_data_select_columns};
 	check_sql_data(response->body.data->sql_data, sql_data_select_autoinc);
 
+	TEST_CASE("SELECT with span");
+	stmt_str = "SELECT 1 AS x;";
+	stmt = StmtProcessor::process(client, conn, stmt_str);
+	select = conn.execute(stmt, std::make_tuple());
+	
+	client.wait(conn, select, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(select));
+	response = conn.getResponse(select);
+	fail_unless(response != std::nullopt);
+	fail_if(response->body.error_stack != std::nullopt);
+	fail_unless(response->body.data != std::nullopt);
+	fail_unless(response->body.data->dimension == 1);
+	printResponse<BUFFER, NetProvider>(conn, *response);
+	SqlData sql_data_select_span;
+	sql_data_select_span.metadata = Metadata{1, sql_data_select_columns};
+	check_sql_data(response->body.data->sql_data, sql_data_select_span);
+
 	/* Finally, drop the table. */
 	stmt_str = "DROP TABLE IF EXISTS tsql;";
 	stmt = StmtProcessor::process(client, conn, stmt_str);
@@ -943,6 +972,18 @@ single_conn_sql(Connector<BUFFER, NetProvider> &client)
 	fail_unless(response != std::nullopt);
 	fail_unless(response->body.data->sql_data->sql_info != std::nullopt);
 	fail_unless(response->body.error_stack == std::nullopt);
+
+	TEST_CASE("DISABLE METADATA");
+	stmt_str = "UPDATE \"_session_settings\" SET \"value\" = false WHERE \"name\" = 'sql_full_metadata';";
+	stmt = StmtProcessor::process(client, conn, stmt_str);
+	rid_t disable_metadata = conn.execute(stmt, std::make_tuple());
+	
+	client.wait(conn, disable_metadata, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(disable_metadata));
+	response = conn.getResponse(disable_metadata);
+	fail_unless(response != std::nullopt);
+	fail_unless(response->body.data->sql_data->sql_info != std::nullopt);
+	fail_if(response->body.error_stack != std::nullopt);
 
 	/* TODO: test collations, span, is_nullbale, is_autoincrement. */
 

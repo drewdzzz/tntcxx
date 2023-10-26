@@ -412,29 +412,34 @@ struct ColumnMapKeyReader : mpp::SimpleReaderBase<BUFFER, mpp::MP_UINT> {
 		using CollationReader_t = mpp::SimpleStrReader<BUFFER, sizeof(ColumnMap{}.collation)>;
 		using SpanReader_t = mpp::SimpleStrReader<BUFFER, sizeof(ColumnMap{}.span)>;
 		using Bool_t = mpp::SimpleReader<BUFFER, mpp::MP_BOOL, bool>;
-		//TODO: handle "access denied" and custom errors
 		switch (key) {
 			case Iproto::FIELD_NAME: {
+				std::cout << ">>>>>>>>>>> name" << std::endl;
 				dec.SetReader(true, FieldNameReader_t{column_map.field_name, column_map.field_name_len});
 				break;
 			}
 			case Iproto::FIELD_TYPE: {
+				std::cout << ">>>>>>>>>>> type" << std::endl;
 				dec.SetReader(true, FieldTypeReader_t{column_map.field_type, column_map.field_type_len});
 				break;
 			}
 			case Iproto::FIELD_COLL: {
+				std::cout << ">>>>>>>>>>> coll" << std::endl;
 				dec.SetReader(true, CollationReader_t{column_map.collation, column_map.collation_len});
 				break;
 			}
 			case Iproto::FIELD_IS_NULLABLE: {
+				std::cout << ">>>>>>>>>>> is_nullable" << std::endl;
 				dec.SetReader(true, Bool_t{column_map.is_nullable});
 				break;
 			}
 			case Iproto::FIELD_IS_AUTOINCREMENT: {
+				std::cout << ">>>>>>>>>>> is_autoinc" << std::endl;
 				dec.SetReader(true, Bool_t{column_map.is_autoincrement});
 				break;
 			}
 			case Iproto::FIELD_SPAN: {
+				std::cout << ">>>>>>>>>>> span" << std::endl;
 				dec.SetReader(true, SpanReader_t{column_map.span, column_map.span_len});
 				break;
 			}
@@ -537,6 +542,7 @@ struct BodyKeyReader : mpp::SimpleReaderBase<BUFFER, mpp::MP_UINT> {
 		
 		switch (key) {
 			case Iproto::DATA: {
+				std::cout << ">>>>>>>>>>> data" << std::endl;
 				if (body.data == std::nullopt) {
 					body.data = Data<BUFFER>(itr);
 				}
@@ -544,12 +550,14 @@ struct BodyKeyReader : mpp::SimpleReaderBase<BUFFER, mpp::MP_UINT> {
 				break;
 			}
 			case Iproto::ERROR_24: {
+				std::cout << ">>>>>>>>>>> error24" << std::endl;
 				body.error_stack = ErrorStack();
 				dec.SetReader(true, Str_t{body.error_stack->error.msg,
 							  body.error_stack->error.msg_len});
 				break;
 			}
 			case Iproto::ERROR: {
+				std::cout << ">>>>>>>>>>> error" << std::endl;
 				/* ERROR_24 key must be parsed first. */
 				assert(body.error_stack != std::nullopt);
 				ErrorStack &error_stack = *body.error_stack;
@@ -557,6 +565,7 @@ struct BodyKeyReader : mpp::SimpleReaderBase<BUFFER, mpp::MP_UINT> {
 				break;
 			}
 			case Iproto::SQL_INFO: {
+				std::cout << ">>>>>>>>>>> sql info" << std::endl;
 				if (body.data == std::nullopt) {
 					body.data = Data<BUFFER>(itr);
 				}
@@ -569,6 +578,7 @@ struct BodyKeyReader : mpp::SimpleReaderBase<BUFFER, mpp::MP_UINT> {
 				break;
 			}
 			case Iproto::METADATA: {
+				std::cout << ">>>>>>>>>>> metadata" << std::endl;
 				if (body.data == std::nullopt) {
 					body.data = Data<BUFFER>(itr);
 				}
@@ -580,6 +590,7 @@ struct BodyKeyReader : mpp::SimpleReaderBase<BUFFER, mpp::MP_UINT> {
 				break;
 			}
 			case Iproto::STMT_ID: {
+				std::cout << ">>>>>>>>>>> stmt id" << std::endl;
 				if (body.data == std::nullopt) {
 					body.data = Data<BUFFER>(itr);
 				}
@@ -591,6 +602,7 @@ struct BodyKeyReader : mpp::SimpleReaderBase<BUFFER, mpp::MP_UINT> {
 				break;
 			}
 			case Iproto::BIND_COUNT: {
+				std::cout << ">>>>>>>>>>> bind cnt" << std::endl;
 				if (body.data == std::nullopt) {
 					body.data = Data<BUFFER>(itr);
 				}
@@ -602,6 +614,7 @@ struct BodyKeyReader : mpp::SimpleReaderBase<BUFFER, mpp::MP_UINT> {
 				break;
 			}
 			case Iproto::BIND_METADATA: {
+				std::cout << ">>>>>>>>>>> bind meta" << std::endl;
 				if (body.data == std::nullopt) {
 					body.data = Data<BUFFER>(itr);
 				}
