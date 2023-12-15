@@ -1671,6 +1671,28 @@ test_variant()
 	fail_unless(wr == rd);
 }
 
+#include "large_tuple.h"
+
+void
+test_huge_tuple()
+{
+	TEST_INIT(0);
+
+	using Buf_t = tnt::Buffer<16 * 1024>;
+	Buf_t buf;
+	auto run = buf.begin<true>();
+
+	large_tuple_t tuple;
+	std::get<100>(tuple) = 42;
+	std::get<4998>(tuple) = 666;
+
+	mpp::encode(buf, tuple);
+
+	large_tuple_t read_tuple;
+	mpp::decode(run, read_tuple);
+	fail_unless(tuple == read_tuple);
+}
+
 int main()
 {
 	test_under_ints();
@@ -1682,4 +1704,5 @@ int main()
 	test_optional();
 	test_raw();
 	test_variant();
+	test_huge_tuple();
 }
