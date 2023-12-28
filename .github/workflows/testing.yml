@@ -21,6 +21,9 @@ jobs:
         build-type:
           - Debug
           - RelWithDebInfo
+        cxx-standard:
+          - 17
+          - 20
     with:
       runs-on: ${{ matrix.runs-on }}
       build-type: ${{ matrix.build-type }}
