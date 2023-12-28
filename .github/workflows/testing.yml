@@ -23,7 +23,8 @@ jobs:
           - RelWithDebInfo
     with:
       runs-on: ${{ matrix.runs-on }}
-      build-type: ${{ matrix.runs-on }}
+      build-type: ${{ matrix.build-type }}
+      cxx-standard: ${{ matrix.cxx-standard }}
 
   valgrind:
     uses: ./.github/workflows/reusable-testing.yml
