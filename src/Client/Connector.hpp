@@ -84,7 +84,6 @@ public:
 	////////////////////////////Service interfaces//////////////////////////
 	void readyToDecode(ConnectionImpl<BUFFER, NetProvider> *conn);
 	void readyToSend(ConnectionImpl<BUFFER, NetProvider> *conn);
-	void readyToSend(Connection<BUFFER, NetProvider> &conn);
 	void finishSend(ConnectionImpl<BUFFER, NetProvider> *conn);
 
 	std::set<ConnectionImpl<BUFFER, NetProvider> *> m_ReadyToSend;
@@ -443,13 +442,6 @@ Connector<BUFFER, NetProvider>::readyToSend(ConnectionImpl<BUFFER, NetProvider> 
 		return;
 	}
 	m_ReadyToSend.insert(conn);
-}
-
-template <class BUFFER, class NetProvider>
-void
-Connector<BUFFER, NetProvider>::readyToSend(Connection<BUFFER, NetProvider> &conn)
-{
-	readyToSend(conn.getImpl());
 }
 
 template <class BUFFER, class NetProvider>
