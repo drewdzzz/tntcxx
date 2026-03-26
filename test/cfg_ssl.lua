@@ -1,4 +1,4 @@
-local ssl_params = {transport = 'ssl', ssl_cert_file = './ssl_test/server.crt', ssl_key_file = './ssl_test/server.key'}
+local ssl_params = {transport = 'ssl', ssl_cert_file = './ssl_test/server.crt', ssl_key_file = './ssl_test/server.key', memtx_use_mvcc_engine=true}
 box.cfg{listen = {{uri = 'localhost:3301', params = ssl_params},
 		  {uri = 'unix/:./tnt.sock', params = ssl_params}},
 	net_msg_max = 10000,

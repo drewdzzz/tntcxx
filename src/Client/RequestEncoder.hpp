@@ -40,6 +40,9 @@
 #include "../mpp/mpp.hpp"
 #include "../Utils/Logger.hpp"
 
+typedef size_t stream_id_t;
+static constexpr stream_id_t STREAM_ID_NONE = 0;
+
 enum IteratorType {
 	EQ = 0,
 	REQ = 1,
@@ -53,6 +56,19 @@ enum IteratorType {
 	BITS_ALL_NOT_SET = 9,
 	OVERLAPS = 10,
 	NEIGHBOR = 11,
+};
+
+enum TxnIsolation {
+	/** Use the default level from `box.cfg`. */
+	DEFAULT = 0,
+	/** Read changes that are committed but not confirmed yet. */
+	READ_COMMITTED = 1,
+	/** Read confirmed changes. */
+	READ_CONFIRMED = 2,
+	/** Determine isolation level automatically. */
+	BEST_EFFORT = 3,
+	/** Allow to read only the changes confirmed on any cluster node. */
+	LINEARIZABLE = 4,
 };
 
 template<class BUFFER>
@@ -69,29 +85,30 @@ public:
 
 	size_t encodePing();
 	template <class T>
-	size_t encodeInsert(const T &tuple, uint32_t space_id);
+	size_t encodeInsert(const T &tuple, uint32_t space_id, stream_id_t stream_id = STREAM_ID_NONE);
 	template <class T>
-	size_t encodeReplace(const T &tuple, uint32_t space_id);
+	size_t encodeReplace(const T &tuple, uint32_t space_id, stream_id_t stream_id = STREAM_ID_NONE);
 	template <class T>
-	size_t encodeDelete(const T &key, uint32_t space_id, uint32_t index_id);
+	size_t encodeDelete(const T &key, uint32_t space_id, uint32_t index_id, stream_id_t stream_id = STREAM_ID_NONE);
 	template <class K, class T>
-	size_t encodeUpdate(const K &key, const T &tuple, uint32_t space_id,
-			    uint32_t index_id);
+	size_t encodeUpdate(const K &key, const T &tuple, uint32_t space_id, uint32_t index_id,
+			    stream_id_t stream_id = STREAM_ID_NONE);
 	template <class T, class O>
-	size_t encodeUpsert(const T &tuple, const O &opts, uint32_t space_id,
-			    uint32_t index_base);
+	size_t encodeUpsert(const T &tuple, const O &opts, uint32_t space_id, uint32_t index_base,
+			    stream_id_t stream_id = STREAM_ID_NONE);
 	template <class T>
-	size_t encodeSelect(const T& key, uint32_t space_id,
-			    uint32_t index_id = 0,
-			    uint32_t limit = UINT32_MAX, uint32_t offset = 0,
-			    IteratorType iterator = EQ);
+	size_t encodeSelect(const T &key, uint32_t space_id, uint32_t index_id = 0, uint32_t limit = UINT32_MAX,
+			    uint32_t offset = 0, IteratorType iterator = EQ, stream_id_t stream_id = STREAM_ID_NONE);
 	template <class T>
-	size_t encodeExecute(std::string_view statement, const T& parameters);
+	size_t encodeExecute(std::string_view statement, const T &parameters, stream_id_t stream_id = STREAM_ID_NONE);
 	template <class T>
-	size_t encodeExecute(unsigned int stmt_id, const T& parameters);
+	size_t encodeExecute(unsigned int stmt_id, const T &parameters, stream_id_t stream_id = STREAM_ID_NONE);
 	size_t encodePrepare(std::string_view statement);
 	template <class T>
-	size_t encodeCall(std::string_view func, const T &args);
+	size_t encodeCall(std::string_view func, const T &args, stream_id_t stream_id = STREAM_ID_NONE);
+	size_t encodeBegin(stream_id_t stream_id, TxnIsolation isolation, double timeout);
+	size_t encodeCommit(stream_id_t stream_id);
+	size_t encodeRollback(stream_id_t stream_id);
 	size_t encodeAuth(std::string_view user, std::string_view passwd,
 			  const Greeting &greet);
 	void reencodeAuth(std::string_view user, std::string_view passwd,
@@ -101,19 +118,20 @@ public:
 	size_t getSync() { return sync; }
 	static constexpr size_t PREHEADER_SIZE = 5;
 private:
-	void encodeHeader(int request);
+	void encodeHeader(int request, stream_id_t stream_id = STREAM_ID_NONE);
 	BUFFER &m_Buf;
 	ssize_t sync = 0;
 };
 
-template<class BUFFER>
+template <class BUFFER>
 void
-RequestEncoder<BUFFER>::encodeHeader(int request)
+RequestEncoder<BUFFER>::encodeHeader(int request, stream_id_t stream_id)
 {
 	//TODO: add schema version.
-	mpp::encode(m_Buf, mpp::as_map(std::forward_as_tuple(
-		MPP_AS_CONST(Iproto::SYNC), ++RequestEncoder::sync,
-		MPP_AS_CONST(Iproto::REQUEST_TYPE), request)));
+	mpp::encode(m_Buf,
+		    mpp::as_map(std::forward_as_tuple(MPP_AS_CONST(Iproto::SYNC), ++RequestEncoder::sync,
+						      MPP_AS_CONST(Iproto::REQUEST_TYPE), request,
+						      MPP_AS_CONST(Iproto::STREAM_ID), stream_id)));
 }
 
 template<class BUFFER>
@@ -131,15 +149,15 @@ RequestEncoder<BUFFER>::encodePing()
 	return request_size + PREHEADER_SIZE;
 }
 
-template<class BUFFER>
+template <class BUFFER>
 template <class T>
 size_t
-RequestEncoder<BUFFER>::encodeInsert(const T &tuple, uint32_t space_id)
+RequestEncoder<BUFFER>::encodeInsert(const T &tuple, uint32_t space_id, stream_id_t stream_id)
 {
 	iterator_t<BUFFER> request_start = m_Buf.end();
 	m_Buf.write('\xce');
 	m_Buf.write(uint32_t{0});
-	encodeHeader(Iproto::INSERT);
+	encodeHeader(Iproto::INSERT, stream_id);
 	mpp::encode(m_Buf, mpp::as_map(std::forward_as_tuple(
 		MPP_AS_CONST(Iproto::SPACE_ID), space_id,
 		MPP_AS_CONST(Iproto::TUPLE), tuple)));
@@ -149,15 +167,15 @@ RequestEncoder<BUFFER>::encodeInsert(const T &tuple, uint32_t space_id)
 	return request_size + PREHEADER_SIZE;
 }
 
-template<class BUFFER>
+template <class BUFFER>
 template <class T>
 size_t
-RequestEncoder<BUFFER>::encodeReplace(const T &tuple, uint32_t space_id)
+RequestEncoder<BUFFER>::encodeReplace(const T &tuple, uint32_t space_id, stream_id_t stream_id)
 {
 	iterator_t<BUFFER> request_start = m_Buf.end();
 	m_Buf.write('\xce');
 	m_Buf.write(uint32_t{0});
-	encodeHeader(Iproto::REPLACE);
+	encodeHeader(Iproto::REPLACE, stream_id);
 	mpp::encode(m_Buf, mpp::as_map(std::forward_as_tuple(
 		MPP_AS_CONST(Iproto::SPACE_ID), space_id,
 		MPP_AS_CONST(Iproto::TUPLE), tuple)));
@@ -167,16 +185,15 @@ RequestEncoder<BUFFER>::encodeReplace(const T &tuple, uint32_t space_id)
 	return request_size + PREHEADER_SIZE;
 }
 
-template<class BUFFER>
+template <class BUFFER>
 template <class T>
 size_t
-RequestEncoder<BUFFER>::encodeDelete(const T &key, uint32_t space_id,
-				     uint32_t index_id)
+RequestEncoder<BUFFER>::encodeDelete(const T &key, uint32_t space_id, uint32_t index_id, stream_id_t stream_id)
 {
 	iterator_t<BUFFER> request_start = m_Buf.end();
 	m_Buf.write('\xce');
 	m_Buf.write(uint32_t{0});
-	encodeHeader(Iproto::DELETE);
+	encodeHeader(Iproto::DELETE, stream_id);
 	mpp::encode(m_Buf, mpp::as_map(std::forward_as_tuple(
 		MPP_AS_CONST(Iproto::SPACE_ID), space_id,
 		MPP_AS_CONST(Iproto::INDEX_ID), index_id,
@@ -187,16 +204,16 @@ RequestEncoder<BUFFER>::encodeDelete(const T &key, uint32_t space_id,
 	return request_size + PREHEADER_SIZE;
 }
 
-template<class BUFFER>
+template <class BUFFER>
 template <class K, class T>
 size_t
-RequestEncoder<BUFFER>::encodeUpdate(const K &key, const T &tuple,
-				     uint32_t space_id, uint32_t index_id)
+RequestEncoder<BUFFER>::encodeUpdate(const K &key, const T &tuple, uint32_t space_id, uint32_t index_id,
+				     stream_id_t stream_id)
 {
 	iterator_t<BUFFER> request_start = m_Buf.end();
 	m_Buf.write('\xce');
 	m_Buf.write(uint32_t{0});
-	encodeHeader(Iproto::UPDATE);
+	encodeHeader(Iproto::UPDATE, stream_id);
 	mpp::encode(m_Buf, mpp::as_map(std::forward_as_tuple(
 		MPP_AS_CONST(Iproto::SPACE_ID), space_id,
 		MPP_AS_CONST(Iproto::INDEX_ID), index_id,
@@ -208,16 +225,16 @@ RequestEncoder<BUFFER>::encodeUpdate(const K &key, const T &tuple,
 	return request_size + PREHEADER_SIZE;
 }
 
-template<class BUFFER>
+template <class BUFFER>
 template <class T, class O>
 size_t
-RequestEncoder<BUFFER>::encodeUpsert(const T &tuple, const O &ops,
-				     uint32_t space_id, uint32_t index_base)
+RequestEncoder<BUFFER>::encodeUpsert(const T &tuple, const O &ops, uint32_t space_id, uint32_t index_base,
+				     stream_id_t stream_id)
 {
 	iterator_t<BUFFER> request_start = m_Buf.end();
 	m_Buf.write('\xce');
 	m_Buf.write(uint32_t{0});
-	encodeHeader(Iproto::UPSERT);
+	encodeHeader(Iproto::UPSERT, stream_id);
 	mpp::encode(m_Buf, mpp::as_map(std::forward_as_tuple(
 		MPP_AS_CONST(Iproto::SPACE_ID), space_id,
 		MPP_AS_CONST(Iproto::INDEX_BASE), index_base,
@@ -229,18 +246,16 @@ RequestEncoder<BUFFER>::encodeUpsert(const T &tuple, const O &ops,
 	return request_size + PREHEADER_SIZE;
 }
 
-template<class BUFFER>
+template <class BUFFER>
 template <class T>
 size_t
-RequestEncoder<BUFFER>::encodeSelect(const T &key,
-				     uint32_t space_id, uint32_t index_id,
-				     uint32_t limit, uint32_t offset,
-				     IteratorType iterator)
+RequestEncoder<BUFFER>::encodeSelect(const T &key, uint32_t space_id, uint32_t index_id, uint32_t limit,
+				     uint32_t offset, IteratorType iterator, stream_id_t stream_id)
 {
 	iterator_t<BUFFER> request_start = m_Buf.end();
 	m_Buf.write('\xce');
 	m_Buf.write(uint32_t{0});
-	encodeHeader(Iproto::SELECT);
+	encodeHeader(Iproto::SELECT, stream_id);
 	mpp::encode(m_Buf, mpp::as_map(std::forward_as_tuple(
 		MPP_AS_CONST(Iproto::SPACE_ID), space_id,
 		MPP_AS_CONST(Iproto::INDEX_ID), index_id,
@@ -254,15 +269,15 @@ RequestEncoder<BUFFER>::encodeSelect(const T &key,
 	return request_size + PREHEADER_SIZE;
 }
 
-template<class BUFFER>
+template <class BUFFER>
 template <class T>
 size_t
-RequestEncoder<BUFFER>::encodeExecute(std::string_view statement, const T& parameters)
+RequestEncoder<BUFFER>::encodeExecute(std::string_view statement, const T &parameters, stream_id_t stream_id)
 {
 	iterator_t<BUFFER> request_start = m_Buf.end();
 	m_Buf.write('\xce');
 	m_Buf.write(uint32_t{0});
-	encodeHeader(Iproto::EXECUTE);
+	encodeHeader(Iproto::EXECUTE, stream_id);
 	mpp::encode(m_Buf, mpp::as_map(std::forward_as_tuple(
 		MPP_AS_CONST(Iproto::SQL_TEXT), statement,
 		MPP_AS_CONST(Iproto::SQL_BIND), parameters,
@@ -273,15 +288,15 @@ RequestEncoder<BUFFER>::encodeExecute(std::string_view statement, const T& param
 	return request_size + PREHEADER_SIZE;
 }
 
-template<class BUFFER>
+template <class BUFFER>
 template <class T>
 size_t
-RequestEncoder<BUFFER>::encodeExecute(unsigned int stmt_id, const T& parameters)
+RequestEncoder<BUFFER>::encodeExecute(unsigned int stmt_id, const T &parameters, stream_id_t stream_id)
 {
 	iterator_t<BUFFER> request_start = m_Buf.end();
 	m_Buf.write('\xce');
 	m_Buf.write(uint32_t{0});
-	encodeHeader(Iproto::EXECUTE);
+	encodeHeader(Iproto::EXECUTE, stream_id);
 	mpp::encode(m_Buf, mpp::as_map(std::forward_as_tuple(
 		MPP_AS_CONST(Iproto::STMT_ID), stmt_id,
 		MPP_AS_CONST(Iproto::SQL_BIND), parameters,
@@ -308,18 +323,66 @@ RequestEncoder<BUFFER>::encodePrepare(std::string_view statement)
 	return request_size + PREHEADER_SIZE;
 }
 
-template<class BUFFER>
+template <class BUFFER>
 template <class T>
 size_t
-RequestEncoder<BUFFER>::encodeCall(std::string_view func, const T &args)
+RequestEncoder<BUFFER>::encodeCall(std::string_view func, const T &args, stream_id_t stream_id)
 {
 	iterator_t<BUFFER> request_start = m_Buf.end();
 	m_Buf.write('\xce');
 	m_Buf.write(uint32_t{0});
-	encodeHeader(Iproto::CALL);
+	encodeHeader(Iproto::CALL, stream_id);
 	mpp::encode(m_Buf, mpp::as_map(std::forward_as_tuple(
 		MPP_AS_CONST(Iproto::FUNCTION_NAME), func,
 		MPP_AS_CONST(Iproto::TUPLE), args)));
+	uint32_t request_size = (m_Buf.end() - request_start) - PREHEADER_SIZE;
+	++request_start;
+	request_start.set(__builtin_bswap32(request_size));
+	return request_size + PREHEADER_SIZE;
+}
+
+template <class BUFFER>
+size_t
+RequestEncoder<BUFFER>::encodeBegin(stream_id_t stream_id, TxnIsolation txn_isolation, double timeout)
+{
+	iterator_t<BUFFER> request_start = m_Buf.end();
+	m_Buf.write('\xce');
+	m_Buf.write(uint32_t {0});
+	encodeHeader(Iproto::BEGIN, stream_id);
+	mpp::encode(m_Buf,
+		    mpp::as_map(std::forward_as_tuple(MPP_AS_CONST(Iproto::TXN_ISOLATION), txn_isolation,
+						      MPP_AS_CONST(Iproto::TIMEOUT), timeout)));
+
+	uint32_t request_size = (m_Buf.end() - request_start) - PREHEADER_SIZE;
+	++request_start;
+	request_start.set(__builtin_bswap32(request_size));
+	return request_size + PREHEADER_SIZE;
+}
+
+template <class BUFFER>
+size_t
+RequestEncoder<BUFFER>::encodeCommit(stream_id_t stream_id)
+{
+	iterator_t<BUFFER> request_start = m_Buf.end();
+	m_Buf.write('\xce');
+	m_Buf.write(uint32_t {0});
+	encodeHeader(Iproto::COMMIT, stream_id);
+	mpp::encode(m_Buf, mpp::as_map(std::make_tuple()));
+	uint32_t request_size = (m_Buf.end() - request_start) - PREHEADER_SIZE;
+	++request_start;
+	request_start.set(__builtin_bswap32(request_size));
+	return request_size + PREHEADER_SIZE;
+}
+
+template <class BUFFER>
+size_t
+RequestEncoder<BUFFER>::encodeRollback(stream_id_t stream_id)
+{
+	iterator_t<BUFFER> request_start = m_Buf.end();
+	m_Buf.write('\xce');
+	m_Buf.write(uint32_t {0});
+	encodeHeader(Iproto::ROLLBACK, stream_id);
+	mpp::encode(m_Buf, mpp::as_map(std::make_tuple()));
 	uint32_t request_size = (m_Buf.end() - request_start) - PREHEADER_SIZE;
 	++request_start;
 	request_start.set(__builtin_bswap32(request_size));

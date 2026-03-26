@@ -78,26 +78,28 @@ private:
 
 	rid_t ping();
 	template <class T>
-	rid_t call(std::string_view func, const T &args);
+	rid_t call(std::string_view func, const T &args, stream_id_t stream_id = 0);
 	template <class T>
-	rid_t execute(std::string_view statement, const T &parameters);
+	rid_t execute(std::string_view statement, const T &parameters, stream_id_t stream_id = 0);
 	template <class T>
-	rid_t execute(unsigned int stmt_id, const T &parameters);
+	rid_t execute(unsigned int stmt_id, const T &parameters, stream_id_t stream_id = 0);
 	rid_t prepare(std::string_view statement);
-
 	template <class T>
-	rid_t insert(const T &tuple, uint32_t space_id);
+	rid_t insert(const T &tuple, uint32_t space_id, stream_id_t stream_id);
 	template <class T>
-	rid_t replace(const T &tuple, uint32_t space_id);
+	rid_t replace(const T &tuple, uint32_t space_id, stream_id_t stream_id);
 	template <class T>
-	rid_t delete_(const T &key, uint32_t space_id, uint32_t index_id);
+	rid_t delete_(const T &key, uint32_t space_id, uint32_t index_id, stream_id_t stream_id);
 	template <class K, class T>
-	rid_t update(const K &key, const T &tuple, uint32_t space_id, uint32_t index_id);
+	rid_t update(const K &key, const T &tuple, uint32_t space_id, uint32_t index_id, stream_id_t stream_id);
 	template <class T, class O>
-	rid_t upsert(const T &tuple, const O &ops, uint32_t space_id, uint32_t index_base);
+	rid_t upsert(const T &tuple, const O &ops, uint32_t space_id, uint32_t index_base, stream_id_t stream_id);
 	template <class T>
 	rid_t select(const T &key, uint32_t space_id, uint32_t index_id = 0, uint32_t limit = UINT32_MAX,
-		     uint32_t offset = 0, IteratorType iterator = EQ);
+		     uint32_t offset = 0, IteratorType iterator = EQ, stream_id_t stream_id = 0);
+	rid_t begin(stream_id_t stream_id, TxnIsolation txn_isolation, double timeout);
+	rid_t commit(stream_id_t stream_id);
+	rid_t rollback(stream_id_t stream_id);
 
 public:
 	void ref();
@@ -359,9 +361,9 @@ ConnectionImpl<BUFFER, NetProvider>::decodeGreeting()
 template <class BUFFER, class NetProvider>
 template <class T>
 rid_t
-ConnectionImpl<BUFFER, NetProvider>::execute(std::string_view statement, const T &parameters)
+ConnectionImpl<BUFFER, NetProvider>::execute(std::string_view statement, const T &parameters, stream_id_t stream_id)
 {
-	enc.encodeExecute(statement, parameters);
+	enc.encodeExecute(statement, parameters, stream_id);
 	connector.readyToSend(this);
 	return enc.getSync();
 }
@@ -369,9 +371,9 @@ ConnectionImpl<BUFFER, NetProvider>::execute(std::string_view statement, const T
 template <class BUFFER, class NetProvider>
 template <class T>
 rid_t
-ConnectionImpl<BUFFER, NetProvider>::execute(unsigned int stmt_id, const T &parameters)
+ConnectionImpl<BUFFER, NetProvider>::execute(unsigned int stmt_id, const T &parameters, stream_id_t stream_id)
 {
-	enc.encodeExecute(stmt_id, parameters);
+	enc.encodeExecute(stmt_id, parameters, stream_id);
 	connector.readyToSend(this);
 	return enc.getSync();
 }
@@ -388,9 +390,9 @@ ConnectionImpl<BUFFER, NetProvider>::prepare(std::string_view statement)
 template <class BUFFER, class NetProvider>
 template <class T>
 rid_t
-ConnectionImpl<BUFFER, NetProvider>::call(std::string_view func, const T &args)
+ConnectionImpl<BUFFER, NetProvider>::call(std::string_view func, const T &args, stream_id_t stream_id)
 {
-	enc.encodeCall(func, args);
+	enc.encodeCall(func, args, stream_id);
 	connector.readyToSend(this);
 	return enc.getSync();
 }
@@ -407,9 +409,9 @@ ConnectionImpl<BUFFER, NetProvider>::ping()
 template <class BUFFER, class NetProvider>
 template <class T>
 rid_t
-ConnectionImpl<BUFFER, NetProvider>::insert(const T &tuple, uint32_t space_id)
+ConnectionImpl<BUFFER, NetProvider>::insert(const T &tuple, uint32_t space_id, stream_id_t stream_id)
 {
-	enc.encodeInsert(tuple, space_id);
+	enc.encodeInsert(tuple, space_id, stream_id);
 	connector.readyToSend(this);
 	return enc.getSync();
 }
@@ -417,9 +419,9 @@ ConnectionImpl<BUFFER, NetProvider>::insert(const T &tuple, uint32_t space_id)
 template <class BUFFER, class NetProvider>
 template <class T>
 rid_t
-ConnectionImpl<BUFFER, NetProvider>::replace(const T &tuple, uint32_t space_id)
+ConnectionImpl<BUFFER, NetProvider>::replace(const T &tuple, uint32_t space_id, stream_id_t stream_id)
 {
-	enc.encodeReplace(tuple, space_id);
+	enc.encodeReplace(tuple, space_id, stream_id);
 	connector.readyToSend(this);
 	return enc.getSync();
 }
@@ -427,9 +429,9 @@ ConnectionImpl<BUFFER, NetProvider>::replace(const T &tuple, uint32_t space_id)
 template <class BUFFER, class NetProvider>
 template <class T>
 rid_t
-ConnectionImpl<BUFFER, NetProvider>::delete_(const T &key, uint32_t space_id, uint32_t index_id)
+ConnectionImpl<BUFFER, NetProvider>::delete_(const T &key, uint32_t space_id, uint32_t index_id, stream_id_t stream_id)
 {
-	enc.encodeDelete(key, space_id, index_id);
+	enc.encodeDelete(key, space_id, index_id, stream_id);
 	connector.readyToSend(this);
 	return enc.getSync();
 }
@@ -437,9 +439,10 @@ ConnectionImpl<BUFFER, NetProvider>::delete_(const T &key, uint32_t space_id, ui
 template <class BUFFER, class NetProvider>
 template <class K, class T>
 rid_t
-ConnectionImpl<BUFFER, NetProvider>::update(const K &key, const T &tuple, uint32_t space_id, uint32_t index_id)
+ConnectionImpl<BUFFER, NetProvider>::update(const K &key, const T &tuple, uint32_t space_id, uint32_t index_id,
+					    stream_id_t stream_id)
 {
-	enc.encodeUpdate(key, tuple, space_id, index_id);
+	enc.encodeUpdate(key, tuple, space_id, index_id, stream_id);
 	connector.readyToSend(this);
 	return enc.getSync();
 }
@@ -447,9 +450,10 @@ ConnectionImpl<BUFFER, NetProvider>::update(const K &key, const T &tuple, uint32
 template <class BUFFER, class NetProvider>
 template <class T, class O>
 rid_t
-ConnectionImpl<BUFFER, NetProvider>::upsert(const T &tuple, const O &ops, uint32_t space_id, uint32_t index_base)
+ConnectionImpl<BUFFER, NetProvider>::upsert(const T &tuple, const O &ops, uint32_t space_id, uint32_t index_base,
+					    stream_id_t stream_id)
 {
-	enc.encodeUpsert(tuple, ops, space_id, index_base);
+	enc.encodeUpsert(tuple, ops, space_id, index_base, stream_id);
 	connector.readyToSend(this);
 	return enc.getSync();
 }
@@ -458,9 +462,36 @@ template <class BUFFER, class NetProvider>
 template <class T>
 rid_t
 ConnectionImpl<BUFFER, NetProvider>::select(const T &key, uint32_t space_id, uint32_t index_id, uint32_t limit,
-					    uint32_t offset, IteratorType iterator)
+					    uint32_t offset, IteratorType iterator, stream_id_t stream_id)
 {
-	enc.encodeSelect(key, space_id, index_id, limit, offset, iterator);
+	enc.encodeSelect(key, space_id, index_id, limit, offset, iterator, stream_id);
+	connector.readyToSend(this);
+	return enc.getSync();
+}
+
+template <class BUFFER, class NetProvider>
+rid_t
+ConnectionImpl<BUFFER, NetProvider>::begin(stream_id_t stream_id, TxnIsolation txn_isolation, double timeout)
+{
+	enc.encodeBegin(stream_id, txn_isolation, timeout);
+	connector.readyToSend(this);
+	return enc.getSync();
+}
+
+template <class BUFFER, class NetProvider>
+rid_t
+ConnectionImpl<BUFFER, NetProvider>::commit(stream_id_t stream_id)
+{
+	enc.encodeCommit(stream_id);
+	connector.readyToSend(this);
+	return enc.getSync();
+}
+
+template <class BUFFER, class NetProvider>
+rid_t
+ConnectionImpl<BUFFER, NetProvider>::rollback(stream_id_t stream_id)
+{
+	enc.encodeRollback(stream_id);
 	connector.readyToSend(this);
 	return enc.getSync();
 }
@@ -472,6 +503,8 @@ class Connection
 public:
 	class Space;
 	Space space;
+	class Stream;
+	Stream stream;
 	using Impl_t = ConnectionImpl<BUFFER, NetProvider>;
 
 	Connection(Connector<BUFFER, NetProvider> &connector);
@@ -562,8 +595,7 @@ template<class BUFFER, class NetProvider>
 class Connection<BUFFER, NetProvider>::Space
 {
 public:
-	Space(Connection<BUFFER, NetProvider> &conn) :
-		index(conn, *this), m_Conn(conn) {};
+	Space(Connection<BUFFER, NetProvider> &conn) : index(conn, *this), stream_id(0), m_Conn(conn) {};
 	Space& operator[] (uint32_t id)
 	{
 		space_id = id;
@@ -572,34 +604,34 @@ public:
 	template <class T>
 	rid_t insert(const T &tuple)
 	{
-		return m_Conn.impl->insert(tuple, space_id);
+		return m_Conn.impl->insert(tuple, space_id, stream_id);
 	}
 	template <class T>
 	rid_t replace(const T &tuple)
 	{
-		return m_Conn.impl->replace(tuple, space_id);
+		return m_Conn.impl->replace(tuple, space_id, stream_id);
 	}
 	template <class T>
 	rid_t delete_(const T &key, uint32_t index_id = 0)
 	{
-		return m_Conn.impl->delete_(key, space_id, index_id);
+		return m_Conn.impl->delete_(key, space_id, index_id, stream_id);
 	}
 	template <class K, class T>
 	rid_t update(const K &key, const T &tuple, uint32_t index_id = 0)
 	{
-		return m_Conn.impl->update(key, tuple, space_id, index_id);
+		return m_Conn.impl->update(key, tuple, space_id, index_id, stream_id);
 	}
 	template <class T, class O>
 	rid_t upsert(const T &tuple, const O &ops, uint32_t index_base = 0)
 	{
-		return m_Conn.impl->upsert(tuple, ops, space_id, index_base);
+		return m_Conn.impl->upsert(tuple, ops, space_id, index_base, stream_id);
 	}
 	template <class T>
 	rid_t select(const T& key, uint32_t index_id = 0,
 		     uint32_t limit = UINT32_MAX,
 		     uint32_t offset = 0, IteratorType iterator = EQ)
 	{
-		return m_Conn.impl->select(key, space_id, index_id, limit, offset, iterator);
+		return m_Conn.impl->select(key, space_id, index_id, limit, offset, iterator, stream_id);
 	}
 	class Index {
 	public:
@@ -613,12 +645,12 @@ public:
 		template <class T>
 		rid_t delete_(const T &key)
 		{
-			return m_Conn.impl->delete_(key, m_Space.space_id, index_id);
+			return m_Conn.impl->delete_(key, m_Space.space_id, index_id, m_Space.stream_id);
 		}
 		template <class K, class T>
 		rid_t update(const K &key, const T &tuple)
 		{
-			return m_Conn.impl->update(key, tuple, m_Space.space_id, index_id);
+			return m_Conn.impl->update(key, tuple, m_Space.space_id, index_id, m_Space.stream_id);
 		}
 		template <class T>
 		rid_t select(const T &key,
@@ -626,36 +658,86 @@ public:
 			     uint32_t offset = 0,
 			     IteratorType iterator = EQ)
 		{
-			return m_Conn.impl->select(key, m_Space.space_id, index_id, limit, offset, iterator);
+			return m_Conn.impl->select(key, m_Space.space_id, index_id, limit, offset, iterator,
+						   m_Space.space_id);
 		}
 	private:
 		Connection<BUFFER, NetProvider> &m_Conn;
 		Space &m_Space;
 		uint32_t index_id;
 	} index;
+
+	/* TODO: hide. */
+	/* ID of stream to use when sending requests. */
+	stream_id_t stream_id;
+
 private:
 	Connection<BUFFER, NetProvider> &m_Conn;
 	uint32_t space_id;
-
 };
 
-template<class BUFFER, class NetProvider>
+template <class BUFFER, class NetProvider>
+class Connection<BUFFER, NetProvider>::Stream {
+public:
+	Stream(Connection<BUFFER, NetProvider> &conn) : space(conn), m_Conn(conn) {};
+	Stream &operator[](uint32_t id)
+	{
+		stream_id = id;
+		space.stream_id = id;
+		return *this;
+	}
+	template <class T>
+	rid_t call(std::string_view func, const T &args)
+	{
+		return m_Conn.impl->call(func, args, stream_id);
+	}
+	template <class T>
+	rid_t execute(std::string_view statement, const T &parameters)
+	{
+		return m_Conn.impl->execute(statement, parameters, stream_id);
+	}
+	/** Begin a new transaction. Zero timeout means no timeout. */
+	rid_t begin(TxnIsolation txn_isolation = TxnIsolation::DEFAULT, double timeout = 0.0)
+	{
+		/* Use one year as infinity. */
+		if (timeout == 0.0)
+			timeout = 60 * 60 * 24 * 365;
+		return m_Conn.impl->begin(stream_id, txn_isolation, timeout);
+	}
+	rid_t commit() { return m_Conn.impl->commit(stream_id); }
+	rid_t rollback() { return m_Conn.impl->rollback(stream_id); }
+
+	/* Space and index methods accessor. */
+	Connection<BUFFER, NetProvider>::Space space;
+
+private:
+	Connection<BUFFER, NetProvider> &m_Conn;
+	stream_id_t stream_id;
+};
+
+template <class BUFFER, class NetProvider>
 Connection<BUFFER, NetProvider>::Connection(Connector<BUFFER, NetProvider> &connector) :
-				   space(*this), impl(new ConnectionImpl(connector))
+    space(*this),
+    stream(*this),
+    impl(new ConnectionImpl(connector))
 {
 	impl->ref();
 }
 
-template<class BUFFER, class NetProvider>
+template <class BUFFER, class NetProvider>
 Connection<BUFFER, NetProvider>::Connection(ConnectionImpl<BUFFER, NetProvider> *a) :
-	space(*this), impl(a)
+    space(*this),
+    stream(*this),
+    impl(a)
 {
 	impl->ref();
 }
 
-template<class BUFFER, class NetProvider>
-Connection<BUFFER, NetProvider>::Connection(const Connection& connection) :
-	space(*this), impl(connection.impl)
+template <class BUFFER, class NetProvider>
+Connection<BUFFER, NetProvider>::Connection(const Connection &connection) :
+    space(*this),
+    stream(*this),
+    impl(connection.impl)
 {
 	impl->ref();
 }

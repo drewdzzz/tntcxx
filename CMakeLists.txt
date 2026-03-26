@@ -264,6 +264,11 @@ TNTCXX_TEST(NAME SchemalessExample TYPE other
             LIBRARIES ${COMMON_LIB}
 )
 
+TNTCXX_TEST(NAME StreamsExample TYPE other
+            SOURCES examples/Streams.cpp
+            LIBRARIES ${COMMON_LIB}
+)
+
 TNTCXX_TEST(NAME LinkTest TYPE other
             SOURCES test/LinkTest/Main.cpp test/LinkTest/Secondary.cpp
             LIBRARIES ${COMMON_LIB}

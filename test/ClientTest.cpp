@@ -151,6 +151,16 @@ printResponse(Response<BUFFER> &response, Data data = std::vector<UserTuple>())
 	}
 }
 
+template <class BUFFER, class Data = std::vector<UserTuple>>
+size_t
+responseTupleCount(Response<BUFFER> &response, Data data = std::vector<UserTuple>())
+{
+	fail_unless(response.body.error_stack == std::nullopt);
+	fail_unless(response.body.data != std::nullopt);
+	fail_unless(response.body.data->decode(data));
+	return std::size(data);
+}
+
 template<class BUFFER, class NetProvider>
 bool
 compareTupleResult(std::vector<UserTuple> &tuples,
@@ -706,6 +716,185 @@ single_conn_call(Connector<BUFFER, NetProvider> &client)
 	fail_unless(conn.futureIsReady(f11));
 	response = conn.getResponse(f11);
 	printResponse<BUFFER>(*response, std::make_tuple(std::make_tuple(0, 0, 0)));
+
+	client.close(conn);
+}
+
+/** Single connection, interactive transactions in streams. */
+template <class BUFFER, class NetProvider>
+void
+single_conn_stream(Connector<BUFFER, NetProvider> &client)
+{
+	TEST_INIT(0);
+	TEST_CASE("basic");
+	Connection<Buf_t, NetProvider> conn(client);
+	int rc = test_connect(client, conn, localhost, port);
+	fail_unless(rc == 0);
+	std::tuple data = std::make_tuple(1984, "111", 1.01);
+
+	/* Begin transaction. */
+	rid_t f = conn.stream[1].begin();
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	Response<Buf_t> response = conn.getResponse(f);
+	fail_unless(response.body.data == std::nullopt);
+	fail_unless(response.body.error_stack == std::nullopt);
+
+	/* Begin in a transaction must fail. */
+	f = conn.stream[1].begin();
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(response.body.data == std::nullopt);
+	fail_unless(response.body.error_stack != std::nullopt);
+
+	/* Execute a replace. */
+	f = conn.stream[1].space[512].replace(data);
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(responseTupleCount(response) == 1);
+
+	/* Read with no stream - data is NOT visible. */
+	f = conn.space[512].select(std::make_tuple(1984));
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(responseTupleCount(response) == 0);
+
+	/* Read with another stream - data is NOT visible. */
+	f = conn.stream[15].space[512].select(std::make_tuple(1984));
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(responseTupleCount(response) == 0);
+
+	/* Read with the same stream - data is visible. */
+	f = conn.stream[1].space[512].select(std::make_tuple(1984));
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(responseTupleCount(response) == 1);
+
+	/* Commit the replace. */
+	f = conn.stream[1].commit();
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(response.body.data == std::nullopt);
+	fail_unless(response.body.error_stack == std::nullopt);
+
+	/* Read with no stream - data is visible now. */
+	f = conn.space[512].select(std::make_tuple(1984));
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(responseTupleCount(response) == 1);
+
+	/* Read with another stream - data is visible now. */
+	f = conn.stream[15].space[512].select(std::make_tuple(1984));
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(responseTupleCount(response) == 1);
+
+	/* Read with the same stream - data is still visible. */
+	f = conn.stream[1].space[512].select(std::make_tuple(1984));
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(responseTupleCount(response) == 1);
+
+	/* Begin another transaction. */
+	f = conn.stream[1].begin();
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(response.body.data == std::nullopt);
+	fail_unless(response.body.error_stack == std::nullopt);
+
+	/* Insert a new tuple. */
+	data = std::make_tuple(1985, "111", 1.01);
+	f = conn.stream[1].space[512].replace(data);
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(responseTupleCount(response) == 1);
+
+	/* Check that the tuple has appeared. */
+	f = conn.stream[1].space[512].select(std::make_tuple(1985));
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(responseTupleCount(response) == 1);
+
+	/* Rollback the transaction. */
+	f = conn.stream[1].rollback();
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(response.body.data == std::nullopt);
+	fail_unless(response.body.error_stack == std::nullopt);
+
+	/* The tuple must disappear after rollback. */
+	f = conn.stream[1].space[512].select(std::make_tuple(1985));
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(responseTupleCount(response) == 0);
+
+	f = conn.space[512].select(std::make_tuple(1985));
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(responseTupleCount(response) == 0);
+
+	TEST_CASE("txn_isolation");
+	/*
+	 * This test case is actually a bit tricky. We want to test txn isolation levels
+	 * but we cannot block Tarantool WAL so the read can happen when the write was commited
+	 * or when it wasn't.
+	 * We will use the fact that default isolation level for read-only transactions is
+	 * read-confirmed. It means that in the case when the write is not committed, the
+	 * reader will read zero tuples, and one tuple otherwise.
+	 * Let's use read-committed isolation then - it will read one tuple in both cases.
+	 * It means that if the test passes stably, the txn isolation actually works.
+	 */
+
+	/* Start reader transaction. */
+	conn.stream[1].begin(TxnIsolation::READ_COMMITTED);
+	/* Do a replace. */
+	conn.space[512].replace(std::make_tuple(1986, "111", 1.01));
+	/* Must see the replace. */
+	rid_t read_committed_f = conn.stream[1].space[512].select(std::make_tuple(1986));
+	/* Commit the reader. */
+	conn.stream[1].commit();
+
+	/* We send these requests as a batch to execute them right one after another. */
+	client.wait(conn, read_committed_f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(read_committed_f));
+	response = conn.getResponse(read_committed_f);
+	fail_unless(responseTupleCount(response) == 1);
+
+	TEST_CASE("timeout");
+
+	conn.stream[1].begin(TxnIsolation::DEFAULT, /*timeout=*/0.1);
+	f = conn.stream[1].space[512].replace(std::make_tuple(1987, "111", 1.01));
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(responseTupleCount(response) == 1);
+
+	usleep(0.15 * 1000000);
+
+	f = conn.stream[1].commit();
+	client.wait(conn, f, WAIT_TIMEOUT);
+	fail_unless(conn.futureIsReady(f));
+	response = conn.getResponse(f);
+	fail_unless(response.body.data == std::nullopt);
+	fail_unless(response.body.error_stack != std::nullopt);
+	Error err = (*response.body.error_stack)[0];
+	fail_unless(err.msg == "Transaction has been aborted by timeout");
 
 	client.close(conn);
 }
@@ -1489,6 +1678,7 @@ int main()
 	single_conn_call<Buf_t, NetProvider>(client);
 	single_conn_sql<Buf_t, NetProvider, StmtProcessorNoop>(client);
 	single_conn_sql<Buf_t, NetProvider, StmtProcessorPrepare>(client);
+	single_conn_stream<Buf_t, NetProvider>(client);
 	replace_unix_socket(client);
 	test_auth(client);
 	/*

@@ -60,6 +60,7 @@ namespace Iproto {
 		GROUP_ID = 0x07,
 		TSN = 0x08,
 		FLAGS = 0x09,
+		STREAM_ID = 0x0a,
 		SPACE_ID = 0x10,
 		INDEX_ID = 0x11,
 		LIMIT = 0x12,
@@ -90,6 +91,8 @@ namespace Iproto {
 		REPLICA_ANON = 0x50,
 		ID_FILTER = 0x51,
 		ERROR = 0x52,
+		TIMEOUT = 0x56,
+		TXN_ISOLATION = 0x59,
 		KEY_MAX
 	};
 
@@ -117,10 +120,13 @@ namespace Iproto {
 		EXECUTE = 11,
 		NOP = 12,
 		PREPARE = 13,
+		BEGIN = 14,
+		COMMIT = 15,
+		ROLLBACK = 16,
 		TYPE_STAT_MAX,
 		RAFT = 30,
-		CONFIRM = 40,
-		ROLLBACK = 41,
+		RAFT_CONFIRM = 40,
+		RAFT_ROLLBACK = 41,
 		PING = 64,
 		JOIN = 65,
 		SUBSCRIBE = 66,

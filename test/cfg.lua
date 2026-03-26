@@ -1,4 +1,4 @@
-box.cfg{listen = '3301,unix/:./tnt.sock', net_msg_max=10000, readahead=163200, log='tarantool.txt'}
+box.cfg{listen = '3301,unix/:./tnt.sock', net_msg_max=10000, readahead=163200, log='tarantool.txt', memtx_use_mvcc_engine=true}
 
 if box.space.T then box.space.T:drop() end
 s = box.schema.space.create('T')

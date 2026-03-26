@@ -318,3 +318,35 @@ will contain all decoded `UserTuples`.
 A `Connector` object and all its instances of `Connection` objects must be used in a single thread. For multi-threaded usage, create one or several `Connector` instances for each thread. Each `Connection` object must be used only with the `Connector` object that it was created from.
 
 If custom `Buffer` or `NetProvider` implementations are used for `Connector` objects, the custom implementations must not share any state (e.g., `static` fields).
+
+### Transactions via Tarantool Streams
+
+In order to use interactive transactions, Tarantool streams can be used. Streams are distinguished by an unique **non-zero** ID. If the ID is zero, no stream will be used.
+
+Streams have the same interface as `Connection` except for added transaction management methods: `begin`, `commit` and `rollback`. Streams can be accessed with `conn.stream[stream_id]` syntax.
+
+Example:
+```c++
+uint32_t space_id = 512;
+stream_id_t stream_id = 1;
+rid_t begin = conn.stream[stream_id].begin();
+
+std::tuple data = std::make_tuple(11, "111", 1.01);
+rid_t insert1 = conn.stream[stream_id].space[space_id].insert(data);
+
+data = std::make_tuple(22, "222", 2.02);
+rid_t insert2 = conn.stream[stream_id].space[space_id].insert(data);
+
+rid_t commit = conn.stream[stream_id].commit();
+```
+
+Several streams can be used simultaneously. After the transaction is committed or rolled back, the stream can be used for another transaction.
+
+Method `begin` has two optional arguments:
+- `txn_isolation` - allows to set isolation level, see more [here](https://www.tarantool.io/en/doc/latest/platform/atomic/txn_mode_mvcc/#setting-the-transaction-isolation-level). All options are stored in `enum TxnIsolation`, possible options are `DEFAULT`, `READ_COMMITTED`, `READ_CONFIRMED`, `BEST_EFFORT` and `LINEARIZABLE`. The default value is, obviously, `DEFAULT`.
+- `timeout` - can be used to set timeout for an interactive transaction so that long transactions are aborted automatically instead of retaining many resources. The default value is `0` which is actually infinity.
+
+Example of usage:
+```c++
+rid_t begin = conn.stream[stream_id].begin(TxnIsolation::READ_CONFIRMED, 5);
+```
