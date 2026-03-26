@@ -9,6 +9,7 @@ AccessModifierOffset: -8
 AlignAfterOpenBracket: Align
 AlwaysBreakAfterReturnType: TopLevel
 AlwaysBreakTemplateDeclarations: Yes
+BreakConstructorInitializers: AfterColon
 ColumnLimit: 120
 ContinuationIndentWidth: 8
 Cpp11BracedListStyle: true
